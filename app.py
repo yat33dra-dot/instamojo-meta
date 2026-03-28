@@ -22,9 +22,18 @@ if uploaded_file:
     df["fn"] = df["Buyer Name"].fillna("").apply(lambda x: str(x).split(" ")[0])
     df["ln"] = df["Buyer Name"].fillna("").apply(lambda x: " ".join(str(x).split(" ")[1:]))
 
-    # --- DATE FORMAT ---
-    df["event_time"] = pd.to_datetime(df["Created At"], errors="coerce") \
+ # --- DATE FORMAT (AUTO-DETECT) ---
+date_col = None
+for col in df.columns:
+    if "date" in col.lower() or "time" in col.lower():
+        date_col = col
+        break
+
+if date_col:
+    df["event_time"] = pd.to_datetime(df[date_col], errors="coerce") \
                         .dt.strftime("%Y-%m-%dT%H:%M:%S")
+else:
+    df["event_time"] = ""
 
     # --- EMAIL CLEAN ---
     df["email"] = df["Buyer Email"].fillna("").str.strip().str.lower()
