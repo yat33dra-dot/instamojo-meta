@@ -8,7 +8,15 @@ uploaded_file = st.file_uploader("Upload Instamojo CSV", type=["csv"])
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
 
-    df = df[df["Status"].str.lower().isin(["credit", "successful", "success"])]
+    # Handle different possible column names for status
+status_col = None
+for col in df.columns:
+    if "status" in col.lower():
+        status_col = col
+        break
+
+if status_col:
+    df = df[df[status_col].astype(str).str.lower().isin(["credit", "successful", "success"])]
 
     df["fn"] = df["Buyer Name"].fillna("").apply(lambda x: str(x).split(" ")[0])
     df["ln"] = df["Buyer Name"].fillna("").apply(lambda x: " ".join(str(x).split(" ")[1:]))
