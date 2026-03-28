@@ -6,72 +6,79 @@ st.title("Instamojo → Meta Converter")
 uploaded_file = st.file_uploader("Upload Instamojo CSV", type=["csv"])
 
 if uploaded_file:
-    df = pd.read_csv(uploaded_file)
+    try:
+        df = pd.read_csv(uploaded_file)
 
-    st.write("Columns detected:", list(df.columns))  # 👈 DEBUG
+        st.write("Columns detected:", list(df.columns))  # debug
 
-    # --- STATUS FILTER ---
-    status_col = None
-    for col in df.columns:
-        if "status" in col.lower():
-            status_col = col
-            break
+        # --- STATUS FILTER ---
+        status_col = next((c for c in df.columns if "status" in c.lower()), None)
+        if status_col:
+            df = df[df[status_col].astype(str).str.lower().isin(["credit", "successful", "success"])]
 
-    if status_col:
-        df = df[df[status_col].astype(str).str.lower().isin(["credit", "successful", "success"])]
+        # --- NAME ---
+        name_col = next((c for c in df.columns if "name" in c.lower()), None)
+        if name_col:
+            df["fn"] = df[name_col].fillna("").apply(lambda x: str(x).split(" ")[0])
+            df["ln"] = df[name_col].fillna("").apply(lambda x: " ".join(str(x).split(" ")[1:]))
+        else:
+            df["fn"] = ""
+            df["ln"] = ""
 
-    # --- NAME ---
-    name_col = next((c for c in df.columns if "name" in c.lower()), None)
-    df["fn"] = df[name_col].fillna("").apply(lambda x: str(x).split(" ")[0]) if name_col else ""
-    df["ln"] = df[name_col].fillna("").apply(lambda x: " ".join(str(x).split(" ")[1:])) if name_col else ""
+        # --- DATE (FIXED + SAFE) ---
+        date_col = next((c for c in df.columns if "date" in c.lower() or "time" in c.lower()), None)
+        if date_col:
+            parsed_dates = pd.to_datetime(df[date_col], errors="coerce", dayfirst=True)
+            df["event_time"] = parsed_dates.dt.strftime("%Y-%m-%dT%H:%M:%S")
+        else:
+            df["event_time"] = ""
 
-# --- DATE ---
-date_col = next((c for c in df.columns if "date" in c.lower() or "time" in c.lower()), None)
+        df = df[df["event_time"].notna() & (df["event_time"] != "")]
 
-if date_col:
-    parsed_dates = pd.to_datetime(df[date_col], errors="coerce", dayfirst=True)
-    df["event_time"] = parsed_dates.dt.strftime("%Y-%m-%dT%H:%M:%S")
-else:
-    df["event_time"] = ""
+        # --- EMAIL ---
+        email_col = next((c for c in df.columns if "email" in c.lower()), None)
+        df["email"] = df[email_col].fillna("").str.lower().str.strip() if email_col else ""
 
-df = df[df["event_time"] != ""]
+        # --- PHONE ---
+        phone_col = next((c for c in df.columns if "phone" in c.lower()), None)
+        if phone_col:
+            df["phone"] = df[phone_col].astype(str).str.replace(r"\D", "", regex=True)
+            df["phone"] = df["phone"].apply(lambda x: "+91" + x[-10:] if len(x) >= 10 else "")
+        else:
+            df["phone"] = ""
 
-    # --- EMAIL ---
-    email_col = next((c for c in df.columns if "email" in c.lower()), None)
-    df["email"] = df[email_col].fillna("").str.lower().str.strip() if email_col else ""
+        # --- AMOUNT ---
+        amount_col = next((c for c in df.columns if "amount" in c.lower()), None)
+        df["value"] = df[amount_col] if amount_col else ""
 
-    # --- PHONE ---
-    phone_col = next((c for c in df.columns if "phone" in c.lower()), None)
-    if phone_col:
-        df["phone"] = df[phone_col].astype(str).str.replace(r"\D", "", regex=True)
-        df["phone"] = df["phone"].apply(lambda x: "+91" + x[-10:] if len(x) >= 10 else "")
-    else:
-        df["phone"] = ""
+        # --- ORDER ID ---
+        id_col = next((c for c in df.columns if "id" in c.lower()), None)
+        df["order_id"] = df[id_col] if id_col else ""
 
-    # --- AMOUNT ---
-    amount_col = next((c for c in df.columns if "amount" in c.lower()), None)
-    df["value"] = df[amount_col] if amount_col else ""
+        # --- FINAL OUTPUT ---
+        meta_df = pd.DataFrame({
+            "event_name": "Purchase",
+            "event_time": df["event_time"],
+            "email": df["email"],
+            "phone": df["phone"],
+            "fn": df["fn"],
+            "ln": df["ln"],
+            "value": df["value"],
+            "currency": "INR",
+            "order_id": df["order_id"]
+        })
 
-    # --- ORDER ID ---
-    id_col = next((c for c in df.columns if "id" in c.lower()), None)
-    df["order_id"] = df[id_col] if id_col else ""
+        st.subheader("Preview")
+        st.dataframe(meta_df.head(20))
 
-    # --- FINAL ---
-    meta_df = pd.DataFrame({
-        "event_name": "Purchase",
-        "event_time": df["event_time"],
-        "email": df["email"],
-        "phone": df["phone"],
-        "fn": df["fn"],
-        "ln": df["ln"],
-        "value": df["value"],
-        "currency": "INR",
-        "order_id": df["order_id"]
-    })
+        csv = meta_df.to_csv(index=False).encode("utf-8")
 
-    st.subheader("Preview")
-    st.dataframe(meta_df.head(20))
+        st.download_button(
+            "Download Meta CSV",
+            csv,
+            "meta_offline.csv",
+            "text/csv"
+        )
 
-    csv = meta_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button("Download Meta CSV", csv, "meta_offline.csv")
+    except Exception as e:
+        st.error(f"Error: {e}")
