@@ -25,13 +25,14 @@ if uploaded_file:
     df["fn"] = df[name_col].fillna("").apply(lambda x: str(x).split(" ")[0]) if name_col else ""
     df["ln"] = df[name_col].fillna("").apply(lambda x: " ".join(str(x).split(" ")[1:])) if name_col else ""
 
-    # --- DATE ---
-    date_col = next((c for c in df.columns if "date" in c.lower() or "time" in c.lower()), None)
-    if date_col:
-        df["event_time"] = pd.to_datetime(df[date_col], errors="coerce") \
-                            .dt.strftime("%Y-%m-%dT%H:%M:%S")
-    else:
-        df["event_time"] = ""
+# --- DATE FORMAT (FIX DAY-FIRST ISSUE) ---
+date_col = next((c for c in df.columns if "date" in c.lower() or "time" in c.lower()), None)
+
+if date_col:
+    df["event_time"] = pd.to_datetime(df[date_col], errors="coerce", dayfirst=True) \
+                        .dt.strftime("%Y-%m-%dT%H:%M:%S")
+else:
+    df["event_time"] = ""
 
     # --- EMAIL ---
     email_col = next((c for c in df.columns if "email" in c.lower()), None)
